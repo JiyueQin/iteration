@@ -1,0 +1,185 @@
+---
+title: "list"
+author: "JiyueQin"
+date: "October 30, 2018"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+set.seed(1)
+```
+
+
+generate a list 
+```{r}
+l = list(vec_numeric = 5:8,
+         mat         = matrix(1:8, 2, 4),
+         vec_logical = c(TRUE, FALSE),
+         summary     = summary(rnorm(1000)))
+l
+l$mat
+l[[1]]
+```
+
+## for loops
+```{r}
+df = data_frame(
+  a = rnorm(20, 3, 1),
+  b = rnorm(20, 0, 5),
+  c = rnorm(20, 10, .2),
+  d = rnorm(20, -3, 1)
+)
+
+is.list(df)
+df[[2]]
+
+mean_and_sd = function(x) {
+  
+  if (!is.numeric(x)) {
+    stop("Argument x should be numeric")
+  } else if (length(x) == 1) {
+    stop("Cannot be computed for length 1 vectors")
+  }
+  
+  mean_x = mean(x)
+  sd_x = sd(x)
+
+  tibble(
+    mean = mean_x, 
+    sd = sd_x
+  )
+}
+
+## apply on the first column of my dataframe
+
+mean_and_sd(df[[1]])
+mean_and_sd(df[[2]])
+
+# this is not neat, let write a for loop
+## you need to specify the empty list
+output = vector("list", length = 4)
+
+for (i in 1:4){
+  output[[i]] = mean_and_sd(df[[i]])
+}
+
+output
+```
+
+## map statements
+
+let us use map statements
+
+```{r}
+output_1 = map(df, mean_and_sd)
+
+df %>% 
+  select(a,b) %>% 
+  map(mean_and_sd)
+
+output_summary = map(df, summary)
+```
+
+# map variant
+
+```{r}
+## get a dataframe output
+map_df(df, mean_and_sd)
+
+## get double output
+map_dbl(df, median)
+
+```
+
+## code syntax
+
+```{r}
+map(.x = df, ~ mean_and_sd(x = .x))
+
+library(rvest)
+
+url_base = "https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber="
+vec_urls = str_c(url_base, 1:5)
+read_page_reviews <- function(url) {
+  
+  h = read_html(url)
+  
+  title = h %>%
+    html_nodes("#cm_cr-review_list .review-title") %>%
+    html_text()
+  
+  stars = h %>%
+    html_nodes("#cm_cr-review_list .review-rating") %>%
+    html_text() %>%
+    str_extract("\\d") %>%
+    as.numeric()
+  
+  text = h %>%
+    html_nodes(".review-data:nth-child(4)") %>%
+    html_text()
+  
+  data_frame(title, stars, text)
+}
+## using map function
+map_df(vec_urls, read_page_reviews)
+
+## using for loop
+for (i in 1:5){
+  output[[i]] = read_page_reviews(vec_urls[[i]])
+}
+bind_rows(output)
+```
+
+## list columns
+```{r}
+
+## don't need to filter .....for three places.
+library(rnoaa)
+
+weather = 
+  meteo_pull_monitors(c("USW00094728", "USC00519397", "USS0023B17S"),
+                      var = c("PRCP", "TMIN", "TMAX"), 
+                      date_min = "2016-01-01",
+                      date_max = "2016-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY", 
+                      USC00519397 = "Waikiki_HA",
+                      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+
+weather %>% 
+  group_by(name, id) %>% 
+  nest
+weather_nest = 
+  nest(weather, date:tmin)
+
+weather_nest %>% 
+  pull(name)
+
+weather_nest %>% 
+  pull(data)
+## operate on the this subdata like usual
+weather_nest$data[[1]]
+
+## lm
+weather_lm = function(df) {
+  lm(tmax ~ tmin, data = df)
+}
+weather_lm(weather_nest$data[[1]])
+
+## map_df does't work as it binds the output results as dataframes. 
+map(weather_nest$data, weather_lm) 
+
+##this is different from the summarize() 
+weather %>% 
+  group_by(name) %>% 
+  summarize(n = n(), mean(tmin))
+
+## save the output
+weather_nest %>% 
+  mutate(lm_result = map(data, weather_lm))
+```
